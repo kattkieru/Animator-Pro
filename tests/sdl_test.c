@@ -27,16 +27,10 @@ int init(SDL_Window **window, SDL_Renderer **renderer) {
 		return -1;
 	}
 
-	*renderer = SDL_CreateRenderer(*window, NULL, 0);
+	*renderer = SDL_CreateRenderer(*window, NULL);
 	if (*renderer == NULL) {
 		printf("Renderer could not be created! SDL_Error: %s\n", SDL_GetError());
 		return -1;
-	}
-
-	int pen_count;
-	SDL_PenID* pens = SDL_GetPens(&pen_count);
-	for (int i = 0; i < pen_count; i++) {
-		printf("Penhewh: %d\n", pens[i]);
 	}
 
 	return 0;
@@ -52,7 +46,7 @@ bool handlePenEvent(SDL_Event *event) {
 			printf("Pen button released\n");
 			return true;
 		case SDL_EVENT_PEN_MOTION:
-			printf("Pen pressure: %f\n", event->pmotion.axes[SDL_PEN_AXIS_PRESSURE]);
+			printf("Pen pressure: %f\n", event->paxis.x);
 			return true;
 		case SDL_EVENT_MOUSE_BUTTON_DOWN:
 			switch (event->button.button) {
@@ -119,9 +113,9 @@ int main(int argc, char *argv[]) {
 			}
 			else if (event.type == SDL_EVENT_KEY_DOWN && (event.key.repeat == 0)) {
 				// only allow the press if no modifiers are being held
-				if (!event.key.keysym.mod) {
-					switch(event.key.keysym.sym) {
-						case SDLK_q: {
+				if (!event.key.mod) {
+					switch(event.key.key) {
+						case SDLK_Q: {
 							char* path = pj_dialog_file_save("Flic Files", "fli,flc", default_path, "test_01.flc");
 							if (path) {
 								printf("%s\n", path);
