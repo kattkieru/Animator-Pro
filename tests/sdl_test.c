@@ -1,8 +1,17 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_pen.h>
+
+#include "nfd.h"
+
+//#!TODO: NON-PORTABLE
+#include <libgen.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/syslimits.h>
+
+#include "../src/pj_sdl/pj_sdl.h"
 
 
 // Function to initialize SDL
@@ -27,7 +36,7 @@ int init(SDL_Window **window, SDL_Renderer **renderer) {
 	int pen_count;
 	SDL_PenID* pens = SDL_GetPens(&pen_count);
 	for (int i = 0; i < pen_count; i++) {
-		printf("Pen: %d\n", pens[i]);
+		printf("Penhewh: %d\n", pens[i]);
 	}
 
 	return 0;
@@ -57,7 +66,7 @@ bool handlePenEvent(SDL_Event *event) {
 					printf("Right Mouse\n");
 					return true;
 			}
-		case SDL_EVENT_MOUSE_MOTION:
+//		case SDL_EVENT_MOUSE_MOTION:
 //			printf("Mouse Motion: %d x %d\n", (int)event->motion.x, (int)event->motion.y);
 //			return true;
 		default:
@@ -101,16 +110,38 @@ int main(int argc, char *argv[]) {
 
 	SDL_Color color = { .r=0xFF, .g=0xFF, .b=0xFF, .a=0xFF };
 
+	char default_path[PATH_MAX] = "/Users/kiki";
+
 	while (!quit) {
 		while (SDL_PollEvent(&event) != 0) {
 			if (event.type == SDL_EVENT_QUIT) {
 				quit = 1;
-			} else {
-				if (handlePenEvent(&event)) {
-					color.r = rand() % 0xFF;
-					color.g = rand() % 0xFF;
-					color.b = rand() % 0xFF;
+			}
+			else if (event.type == SDL_EVENT_KEY_DOWN && (event.key.repeat == 0)) {
+				// only allow the press if no modifiers are being held
+				if (!event.key.keysym.mod) {
+					switch(event.key.keysym.sym) {
+						case SDLK_q: {
+							char* path = pj_dialog_file_save("Flic Files", "fli,flc", default_path, "test_01.flc");
+							if (path) {
+								printf("%s\n", path);
+								snprintf(default_path, PATH_MAX, "%s", dirname(path));
+							}
+							else {
+								printf("Cancelled.\n");
+							}
+							break;
+						}
+						default:
+							break;
+					}
 				}
+			}
+
+			if (handlePenEvent(&event)) {
+				color.r = rand() % 0xFF;
+				color.g = rand() % 0xFF;
+				color.b = rand() % 0xFF;
 			}
 		}
 
