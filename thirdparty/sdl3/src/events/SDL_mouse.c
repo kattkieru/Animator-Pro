@@ -138,21 +138,25 @@ static void SDLCALL SDL_TouchMouseEventsChanged(void *userdata, const char *name
 #ifdef SDL_PLATFORM_VITA
 static void SDLCALL SDL_VitaTouchMouseDeviceChanged(void *userdata, const char *name, const char *oldValue, const char *hint)
 {
+    Uint8 vita_touch_mouse_device = 1;
+
     SDL_Mouse *mouse = (SDL_Mouse *)userdata;
     if (hint) {
         switch (*hint) {
-        default:
         case '0':
-            mouse->vita_touch_mouse_device = 1;
+            vita_touch_mouse_device = 1;
             break;
         case '1':
-            mouse->vita_touch_mouse_device = 2;
+            vita_touch_mouse_device = 2;
             break;
         case '2':
-            mouse->vita_touch_mouse_device = 3;
+            vita_touch_mouse_device = 3;
+            break;
+        default:
             break;
         }
     }
+    mouse->vita_touch_mouse_device = vita_touch_mouse_device;
 }
 #endif
 
@@ -234,6 +238,17 @@ static void SDLCALL SDL_MouseRelativeCursorVisibleChanged(void *userdata, const 
     SDL_SetCursor(NULL); // Update cursor visibility
 }
 
+static void SDLCALL SDL_MouseIntegerModeChanged(void *userdata, const char *name, const char *oldValue, const char *hint)
+{
+    SDL_Mouse *mouse = (SDL_Mouse *)userdata;
+
+    if (hint && *hint) {
+        mouse->integer_mode_flags = (Uint8)SDL_atoi(hint);
+    } else {
+        mouse->integer_mode_flags = 0;
+    }
+}
+
 // Public functions
 bool SDL_PreInitMouse(void)
 {
@@ -287,6 +302,9 @@ bool SDL_PreInitMouse(void)
 
     SDL_AddHintCallback(SDL_HINT_MOUSE_RELATIVE_CURSOR_VISIBLE,
                         SDL_MouseRelativeCursorVisibleChanged, mouse);
+
+    SDL_AddHintCallback("SDL_MOUSE_INTEGER_MODE",
+                        SDL_MouseIntegerModeChanged, mouse);
 
     mouse->was_touch_mouse_events = false; // no touch to mouse movement event pending
 
@@ -720,12 +738,22 @@ static void SDL_PrivateSendMouseMotion(Uint64 timestamp, SDL_Window *window, SDL
                 y *= mouse->normal_speed_scale;
             }
         }
+        if (mouse->integer_mode_flags & 1) {
+            // Accumulate the fractional relative motion and only process the integer portion
+            mouse->integer_mode_residual_motion_x = SDL_modff(mouse->integer_mode_residual_motion_x + x, &x);
+            mouse->integer_mode_residual_motion_y = SDL_modff(mouse->integer_mode_residual_motion_y + y, &y);
+        }
         xrel = x;
         yrel = y;
         x = (mouse->last_x + xrel);
         y = (mouse->last_y + yrel);
         ConstrainMousePosition(mouse, window, &x, &y);
     } else {
+        if (mouse->integer_mode_flags & 1) {
+            // Discard the fractional component from absolute coordinates
+            x = SDL_truncf(x);
+            y = SDL_truncf(y);
+        }
         ConstrainMousePosition(mouse, window, &x, &y);
         if (mouse->has_position) {
             xrel = x - mouse->last_x;
@@ -1004,6 +1032,8 @@ void SDL_SendMouseWheel(Uint64 timestamp, SDL_Window *window, SDL_MouseID mouseI
 
     // Post the event, if desired
     if (SDL_EventEnabled(SDL_EVENT_MOUSE_WHEEL)) {
+        float integer_x, integer_y;
+
         if (!mouse->relative_mode || mouse->warp_emulation_active) {
             // We're not in relative mode, so all mouse events are global mouse events
             mouseID = SDL_GLOBAL_MOUSE_ID;
@@ -1014,11 +1044,26 @@ void SDL_SendMouseWheel(Uint64 timestamp, SDL_Window *window, SDL_MouseID mouseI
         event.common.timestamp = timestamp;
         event.wheel.windowID = mouse->focus ? mouse->focus->id : 0;
         event.wheel.which = mouseID;
-        event.wheel.x = x;
-        event.wheel.y = y;
         event.wheel.direction = direction;
         event.wheel.mouse_x = mouse->x;
         event.wheel.mouse_y = mouse->y;
+
+        mouse->residual_scroll_x = SDL_modff(mouse->residual_scroll_x + x, &integer_x);
+        event.wheel.integer_x = (Sint32)integer_x;
+
+        mouse->residual_scroll_y = SDL_modff(mouse->residual_scroll_y + y, &integer_y);
+        event.wheel.integer_y = (Sint32)integer_y;
+
+        // Return the accumulated values in x/y when integer wheel mode is enabled.
+        // This is necessary for compatibility with sdl2-compat 2.32.54.
+        if (mouse->integer_mode_flags & 2) {
+            event.wheel.x = integer_x;
+            event.wheel.y = integer_y;
+        } else {
+            event.wheel.x = x;
+            event.wheel.y = y;
+        }
+
         SDL_PushEvent(&event);
     }
 }
@@ -1107,6 +1152,9 @@ void SDL_QuitMouse(void)
 
     SDL_RemoveHintCallback(SDL_HINT_MOUSE_RELATIVE_CURSOR_VISIBLE,
                         SDL_MouseRelativeCursorVisibleChanged, mouse);
+
+    SDL_RemoveHintCallback("SDL_MOUSE_INTEGER_MODE",
+                        SDL_MouseIntegerModeChanged, mouse);
 
     for (int i = SDL_mouse_count; i--; ) {
         SDL_RemoveMouse(SDL_mice[i].instance_id, false);

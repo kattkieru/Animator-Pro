@@ -1118,7 +1118,13 @@ static bool PIPEWIRE_OpenDevice(SDL_AudioDevice *device)
 
     stream_name = SDL_GetHint(SDL_HINT_AUDIO_DEVICE_STREAM_NAME);
     if (!stream_name || *stream_name == '\0') {
-        stream_name = "Audio Stream";
+        if (app_name) {
+            stream_name = app_name;
+        } else if (app_id) {
+            stream_name = app_id;
+        } else {
+            stream_name = "SDL Audio Stream";
+        }
     }
 
     /*
@@ -1187,7 +1193,11 @@ static bool PIPEWIRE_OpenDevice(SDL_AudioDevice *device)
     PIPEWIRE_pw_properties_setf(props, PW_KEY_NODE_LATENCY, "%u/%i", device->sample_frames, device->spec.freq);
     PIPEWIRE_pw_properties_setf(props, PW_KEY_NODE_RATE, "1/%u", device->spec.freq);
     PIPEWIRE_pw_properties_set(props, PW_KEY_NODE_ALWAYS_PROCESS, "true");
-    PIPEWIRE_pw_properties_set(props, PW_KEY_NODE_DONT_RECONNECT, "true");  // Requesting a specific device, don't migrate to new default hardware.
+
+    // UPDATE: This prevents users from moving the audio to a new sink (device) using standard tools. This is slightly in conflict
+    //  with how SDL wants to manage audio devices, but if people want to do it, we should let them, so this is commented out
+    //  for now. We might revisit later.
+    //PIPEWIRE_pw_properties_set(props, PW_KEY_NODE_DONT_RECONNECT, "true");  // Requesting a specific device, don't migrate to new default hardware.
 
     if (node_id != PW_ID_ANY) {
         PIPEWIRE_pw_thread_loop_lock(hotplug_loop);
